@@ -1696,18 +1696,18 @@ function onMouseDrag (event) {
 					 // can't cross previous point on the left					
 					}
 				}
-console.log("NEW CALC=",newPoint.y  , GRID_Y_OFFSET  , rngCartesianOffsetY.value, newPoint.y  - GRID_Y_OFFSET  + parseInt(rngCartesianOffsetY.value));
-				if (newPoint.y  > 200 + GRID_Y_OFFSET  + parseInt(rngCartesianOffsetY.value))  newPoint.y = 200 + GRID_Y_OFFSET  + parseInt(rngCartesianOffsetY.value);
-				if (newPoint.y < 0  + GRID_Y_OFFSET  + parseInt(rngCartesianOffsetY.value)) newPoint.y = 0  + GRID_Y_OFFSET  + parseInt(rngCartesianOffsetY.value);
-				
-				if ((selectedSegmentIndex == 0) || (selectedSegmentIndex == camData.segments.length-1)) { // Sync first and last point horizontally
-					selectedCircle.position.y = newPoint.y + parseInt(rngCartesianOffsetY.value);
-					lastCircle.position.y = newPoint.y + parseInt(rngCartesianOffsetY.value);
+		console.log("NEW CALC=", newPoint.y, GRID_Y_OFFSET, rngCartesianOffsetY.value);
+				// Clamp to visible grid (screen coordinates). Cartesian offset is applied when
+				// converting to/from data coordinates, so do NOT add it here.
+				if (newPoint.y > GRID_Y_OFFSET + CAM_RADIUS) newPoint.y = GRID_Y_OFFSET + CAM_RADIUS;
+				if (newPoint.y < GRID_Y_OFFSET) newPoint.y = GRID_Y_OFFSET;
+				// Sync first and last point vertically if edge selected
+				if ((selectedSegmentIndex == 0) || (selectedSegmentIndex == camData.segments.length-1)) {
+					selectedCircle.position.y = newPoint.y;
+					lastCircle.position.y = newPoint.y;
 				} else {
-				//  edges not selected
+					selectedCircle.position.y = newPoint.y;
 				}
-				
-		        selectedCircle.position.y = newPoint.y + parseInt(rngCartesianOffsetY.value);
 
 	console.log("   Dragging  ",
 								selectedCircle.position._x,
@@ -1737,99 +1737,711 @@ console.log("NEW CALC=",newPoint.y  , GRID_Y_OFFSET  , rngCartesianOffsetY.value
 </script>
 </head>
 
-<body>
-<center><big><big>Javascript Cam/Follower mechanism generator/simulator</big></big><br>
-v. 0.7.0 - 11/oct/2024<br>
-Made with <a href="http://paperjs.org/tutorials/">paper.js</a> by Jumpjack<br>
-Source code: <a href="https://github.com/jumpjack/CamFollowerJS">link</a><br>
+<style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
 
-<table border=1>
-<tr><td colspan=2><center>File loaded:<span id="filename" name="filename">none</span></center></td></tr>
-<tr><td colspan=2>Status: <span id="spnStatus" name="spnStatus">-</span></td></tr>
-<tr>
-	<td style="vertical-align:top;" width = 100>
-		Flat profile (JSON format):<br>
-		<input type='file' id='fileinput' name='fileinput' accept=".json" style="display:none;">
-		<input type="button" id="btnLoadJSON" name="btnLoadJSON" value="Load" onclick="document.getElementById('fileinput').click();" />
-		<button id="btnSave" name="btnSave" >Save</button><br>
-		<br>
+:root {
+  --bg-primary: #0f0f0f;
+  --bg-secondary: #1a1a1a;
+  --bg-tertiary: rgba(255, 255, 255, 0.05);
+  --text-primary: #e0e0e0;
+  --text-secondary: #999;
+  --border-color: rgba(255, 255, 255, 0.1);
+  --canvas-bg: #1a1a1a;
+  --accent-primary: #60a5fa;
+  --accent-secondary: #a78bfa;
+}
 
-<!--
-		Angle profile (JSON format):<br>
-		<input type='file' id='fileinputAngle' name='fileinputAngle' accept=".json" style="display:none;">
-		<input type="button" id="btnLoadJSONAngle" name="btnLoadJSONAngle" value="Load" onclick="document.getElementById('fileinputAngle').click();" />
-		<button id="btnSaveAngle" name="btnSaveAngle" onclick="alert('Not implemented, you must manyally copy datainto a .json file')">Save</button><br>
-		<br>
--->
-		Circular profile (SVG format):<br>
-		<input type='file' id='SVGfileinput' name='SVGfileinput'	accept=".svg" style="display:none;">
-		<input type="button" id="btnLoadSVG" name="btnLoadSVG" value="Load" onclick="document.getElementById('SVGfileinput').click();" />
-		<button id="btnExportSVG" name="btnExportSVG">Save</button><br>
-		<br>
-		Raster to SVG online converter:<a href="https://image.online-convert.com/convert-to-svg">link</a><br>
-		<br>
-		<br>
-	Rotation: <button id="btnStart" name="btnStart">Start</button><button id="btnStop" name="btnStop">Stop</button>	<button id="btnReset" name="btnStop">Reset</button><br>
-	<br>
-	Please use one of these services<br>
-	to convert SVG file to STL format<br>
-	 for 3d printing:<br>
-	<a href="https://rawgit.com/ryancalme/svg-to-stl/master/SVGtoSTL.html">Link 1</a><br>
-	<a href="http://svg2stl.com/">Link 2</a><br>
-<br><br>
-	Objects count: <span id="spnCount" name="spnCount">-</span><br>
-	<button id ="btnDebug">Debug</button><br>
-	<br>
+body.light-mode {
+  --bg-primary: #f5f5f5;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: rgba(0, 0, 0, 0.05);
+  --text-primary: #1a1a1a;
+  --text-secondary: #666;
+  --border-color: rgba(0, 0, 0, 0.1);
+  --canvas-bg: #ffffff;
+}
 
-	</td>
+body {
+  background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 100vh;
+  padding: 20px;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
 
-	<td>
-	<canvas id="myCanvas" width=750 height=700 style="background:#EEEEEE;"></canvas><br>
-	<center>
-	Polar zoom: <input type="range" id="rngZoom" name="rngZoom" value = "0" min= "1" max = "5" step="0.1" ><br>
-	Cartesian offset: <input type="range" id="rngCartesianOffsetY" name="rngCartesianOffsetY" value = "0" min= "1" max = "100" step="1" ><br>
-	Follower offset: <input type="range" id="rngFollowerOffset" name="rngFollowerOffset" value = "0" min= "-100" max = "100">
-	<button id="btnFollowerReset" name="btnFollowerReset">Reset</button>
-	<button id="btnRecalcPressure" name="btnRecalcPressure">Recalc pressure</button>
-	<br>
-	<button id="btnGrid" name="btnGrid">Grid back/front</button>
-	<button id="btnShow" name="btnShow">Points</button><br>
-	Rotation angle: <span id="lblAngle" name="lblAngle">0</span><span class="slidecontainer">
-		<input type="range" min="0" max="359" value="5" class="slider" id="rngRotation" name="rngRotation">
-	</span>
-	<br>
-	Pressure angle: <span id="spnPressure" name="spnPressure" style="color:#000000;">0</span>
-	Realtime curve recalc: <input type="checkbox" id="chkPressReal" name="chkPressReal"><br>
-	<br>
-	</center>
-	</td>
+.container {
+  max-width: 1600px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+}
 
-</tr>
-<tr>
-	<td colspan = 2>
-		JSON imported data&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-		<input type='button' id='btnReload' name='btnReload' value='Reload' >
-		<input type='checkbox' id='chkSmooth' name='chkSmooth'> <label for='chkSmooth'>Smooth</label>
-		<br>
-		<textarea id="fileContents" name="fileContents" cols=50 rows=30>
-		</textarea><br>
-<br>
+header {
+  background: var(--bg-tertiary);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 24px;
+  text-align: center;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
 
-<!--
-		Angular data:<br>
-		<textarea id="fileContentsAngle" name="fileContentsAngle" cols=80 rows=30>
-		</textarea><br>
-<br>
--->
-		SVG imported data:<br>
-		<textarea id="fileContentsSVG" name="fileContentsSVG" cols=50 rows=30>
-		</textarea><br>
+header > div:first-child {
+  flex: 1;
+}
 
-	</td>
-	<td style="vertical-align:top;">
-	</td>
-</tr>
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 
-</table>
+.toggle-switch {
+  position: relative;
+  width: 50px;
+  height: 26px;
+  background: var(--text-secondary);
+  border: none;
+  border-radius: 13px;
+  cursor: pointer;
+  transition: background 0.3s ease;
+  padding: 0;
+  outline: none;
+}
+
+.toggle-switch.active {
+  background: var(--accent-primary);
+}
+
+.toggle-switch::after {
+  content: '';
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  background: white;
+  border-radius: 50%;
+  top: 2px;
+  left: 2px;
+  transition: left 0.3s ease;
+}
+
+.toggle-switch.active::after {
+  left: 26px;
+}
+
+.toggle-icon {
+  font-size: 18px;
+  width: 24px;
+  text-align: center;
+}
+
+header h1 {
+  font-size: 28px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  background: linear-gradient(135deg, #60a5fa, #a78bfa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+header p {
+  color: var(--text-secondary);
+  font-size: 12px;
+  margin: 4px 0;
+}
+
+header a {
+  color: var(--accent-primary);
+  text-decoration: none;
+  margin: 0 4px;
+  transition: color 0.2s;
+}
+
+header a:hover {
+  color: var(--accent-secondary);
+}
+
+.status-bar {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.status-bar-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-label {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.status-value {
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.main-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr 280px;
+  gap: 20px;
+  min-height: 900px;
+}
+
+.panel {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 20px;
+  overflow-y: auto;
+  max-height: 900px;
+}
+
+.panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.panel::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+  border-radius: 10px;
+}
+
+.panel::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+}
+
+.panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.section {
+  margin-bottom: 24px;
+}
+
+.section:last-child {
+  margin-bottom: 0;
+}
+
+.section-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  display: block;
+}
+
+.button-group {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+button, input[type="button"] {
+  background: rgba(96, 165, 250, 0.15);
+  color: var(--accent-primary);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 13px;
+  transition: all 0.2s;
+  flex: 1;
+  min-width: 70px;
+}
+
+button:hover, input[type="button"]:hover {
+  background: rgba(96, 165, 250, 0.25);
+  border-color: rgba(96, 165, 250, 0.5);
+  transform: translateY(-1px);
+}
+
+button:active, input[type="button"]:active {
+  transform: translateY(0);
+}
+
+.button-group.secondary button,
+.button-group.secondary input[type="button"] {
+  background: rgba(167, 139, 250, 0.15);
+  color: var(--accent-secondary);
+  border-color: rgba(167, 139, 250, 0.3);
+}
+
+.button-group.secondary button:hover,
+.button-group.secondary input[type="button"]:hover {
+  background: rgba(167, 139, 250, 0.25);
+  border-color: rgba(167, 139, 250, 0.5);
+}
+
+.canvas-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 20px;
+  min-height: 900px;
+}
+
+#myCanvas {
+  background: var(--canvas-bg);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  max-width: 100%;
+  height: auto;
+  width: 100%;
+}
+
+.slider-group {
+  margin-bottom: 16px;
+}
+
+.slider-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+input[type="range"] {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 0 8px rgba(96, 165, 250, 0.4);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+  box-shadow: 0 0 8px rgba(96, 165, 250, 0.4);
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  background: var(--accent-secondary);
+  box-shadow: 0 0 12px rgba(167, 139, 250, 0.6);
+}
+
+input[type="range"]::-moz-range-thumb:hover {
+  background: var(--accent-secondary);
+  box-shadow: 0 0 12px rgba(167, 139, 250, 0.6);
+}
+
+/* Make sliders visible in light mode: darker track and thumb */
+body.light-mode input[type="range"] {
+	background: rgba(0, 0, 0, 0.08);
+}
+
+body.light-mode input[type="range"]::-webkit-slider-runnable-track {
+	background: rgba(0, 0, 0, 0.12);
+}
+
+body.light-mode input[type="range"]::-moz-range-track {
+	background: rgba(0, 0, 0, 0.12);
+}
+
+body.light-mode input[type="range"]::-webkit-slider-thumb,
+body.light-mode input[type="range"]::-moz-range-thumb {
+	background: #374151; /* darker thumb for visibility */
+	box-shadow: 0 0 6px rgba(0, 0, 0, 0.35);
+	border: 2px solid rgba(255,255,255,0.06);
+}
+
+body.light-mode input[type="range"]::-webkit-slider-thumb:hover,
+body.light-mode input[type="range"]::-moz-range-thumb:hover {
+	background: #111827;
+	box-shadow: 0 0 10px rgba(0, 0, 0, 0.45);
+}
+
+.checkbox-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--accent-primary);
+}
+
+.info-box {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 12px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.info-box strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--text-primary);
+}
+
+.link-list {
+  list-style: none;
+  padding: 0;
+}
+
+.link-list li {
+  margin: 4px 0;
+}
+
+.link-list a {
+  color: var(--accent-primary);
+  text-decoration: none;
+  font-size: 12px;
+  transition: color 0.2s;
+}
+
+.link-list a:hover {
+  color: var(--accent-secondary);
+}
+
+input[type="file"] {
+  display: none;
+}
+
+textarea {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 12px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 12px;
+  resize: vertical;
+  width: 100%;
+  margin-top: 8px;
+}
+
+textarea:focus {
+  outline: none;
+  border-color: rgba(96, 165, 250, 0.5);
+  background: var(--bg-secondary);
+}
+
+.info-box {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 12px;
+  color: var(--text-primary);
+  margin: 12px 0;
+  line-height: 1.5;
+}
+
+.link-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+}
+
+.link-list li {
+  margin-bottom: 6px;
+}
+
+.link-list a {
+  color: #60a5fa;
+  text-decoration: none;
+  font-size: 12px;
+  transition: color 0.2s;
+}
+
+.link-list a:hover {
+  color: #a78bfa;
+  text-decoration: underline;
+}
+
+@media (max-width: 1200px) {
+  .main-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .panel {
+    max-height: none;
+  }
+}
+
+@media (max-width: 768px) {
+  body {
+    padding: 12px;
+  }
+  
+  header h1 {
+    font-size: 20px;
+  }
+  
+  .container {
+    gap: 12px;
+  }
+}
+</style>
+
+<div class="container">
+  <header>
+    <div>
+      <h1>Cam/Follower Mechanism Simulator</h1>
+      <p>Interactive design and analysis tool</p>
+    </div>
+    <div class="theme-toggle">
+      <span class="toggle-icon">🌙</span>
+      <button class="toggle-switch" id="themeToggle"></button>
+      <span class="toggle-icon">☀️</span>
+    </div>
+  </header>
+
+  <div class="status-bar">
+    <div class="status-bar-item">
+      <span class="status-label">File:</span>
+      <span class="status-value" id="filename">none</span>
+    </div>
+    <div class="status-bar-item">
+      <span class="status-label">Status:</span>
+      <span class="status-value" id="spnStatus">-</span>
+    </div>
+    <div class="status-bar-item">
+      <span class="status-label">Objects:</span>
+      <span class="status-value" id="spnCount">-</span>
+    </div>
+  </div>
+
+  <div class="main-grid">
+    <!-- Left Panel -->
+    <div class="panel">
+      <div class="section">
+        <span class="section-title">JSON Profile</span>
+        <input type='file' id='fileinput' name='fileinput' accept=".json">
+        <div class="button-group">
+          <input type="button" id="btnLoadJSON" value="Load" onclick="document.getElementById('fileinput').click();" />
+          <button id="btnSave">Save</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <span class="section-title">SVG Profile</span>
+        <input type='file' id='SVGfileinput' name='SVGfileinput' accept=".svg">
+        <div class="button-group">
+          <input type="button" id="btnLoadSVG" value="Load" onclick="document.getElementById('SVGfileinput').click();" />
+          <button id="btnExportSVG">Save</button>
+        </div>
+        <div class="info-box">
+          <strong>Convert raster to SVG:</strong>
+          <a href="https://image.online-convert.com/convert-to-svg" target="_blank">Online Converter</a>
+        </div>
+      </div>
+
+      <div class="section">
+        <span class="section-title">Rotation Control</span>
+        <div class="button-group secondary">
+          <button id="btnStart">Start</button>
+          <button id="btnStop">Stop</button>
+          <button id="btnReset">Reset</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <span class="section-title">Export to 3D</span>
+        <div class="info-box">
+          Convert SVG to STL format for 3D printing:
+          <ul class="link-list">
+            <li><a href="https://rawgit.com/ryancalme/svg-to-stl/master/SVGtoSTL.html" target="_blank">Converter 1</a></li>
+            <li><a href="http://svg2stl.com/" target="_blank">Converter 2</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section">
+        <span class="section-title">Tools</span>
+        <div class="button-group">
+          <button id="btnDebug">Debug</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center - Canvas -->
+    <div class="canvas-container">
+      <canvas id="myCanvas" width="750" height="700"></canvas>
+    </div>
+
+    <!-- Right Panel -->
+    <div class="panel">
+      <div class="section">
+        <span class="section-title">View Controls</span>
+        <div class="slider-group">
+          <label class="slider-label">
+            <span>Polar Zoom</span>
+            <span id="zoomValue">0</span>
+          </label>
+          <input type="range" id="rngZoom" name="rngZoom" value="0" min="1" max="5" step="0.1">
+        </div>
+        
+        <div class="slider-group">
+          <label class="slider-label">
+            <span>Cartesian Offset</span>
+            <span id="offsetValue">0</span>
+          </label>
+          <input type="range" id="rngCartesianOffsetY" name="rngCartesianOffsetY" value="0" min="1" max="100" step="1">
+        </div>
+
+        <div class="slider-group">
+          <label class="slider-label">
+            <span>Follower Offset</span>
+            <span id="followerValue">0</span>
+          </label>
+          <input type="range" id="rngFollowerOffset" name="rngFollowerOffset" value="0" min="-100" max="100">
+        </div>
+
+        <div class="button-group">
+          <button id="btnFollowerReset">Reset</button>
+          <button id="btnRecalcPressure">Recalc</button>
+        </div>
+
+        <div class="button-group secondary">
+          <button id="btnGrid">Grid</button>
+          <button id="btnShow">Points</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <span class="section-title">Rotation</span>
+        <div class="slider-group">
+          <label class="slider-label">
+            <span>Angle</span>
+            <span id="lblAngle">0°</span>
+          </label>
+          <input type="range" id="rngRotation" min="0" max="359" value="5">
+        </div>
+      </div>
+
+      <div class="section">
+        <span class="section-title">Analysis</span>
+        <div class="slider-group">
+          <label class="slider-label">
+            <span>Pressure Angle</span>
+            <span id="spnPressure" style="color:#60a5fa;">0°</span>
+          </label>
+        </div>
+        <div class="checkbox-group">
+          <input type="checkbox" id="chkPressReal" name="chkPressReal">
+          <label for="chkPressReal">Realtime Recalc</label>
+        </div>
+      </div>
+
+      <div class="section">
+        <span class="section-title">JSON Data</span>
+        <div class="checkbox-group">
+          <input type="checkbox" id="chkSmooth" name="chkSmooth">
+          <label for="chkSmooth">Smooth Curve</label>
+        </div>
+        <button id="btnReload" style="width: 100%; margin-bottom: 12px;">Reload</button>
+        <textarea id="fileContents" name="fileContents" rows="12"></textarea>
+        <textarea id="fileContentsSVG" name="fileContentsSVG" rows="8" style="display: none;"></textarea>
+        <textarea id="fileContentsAngle" name="fileContentsAngle" rows="8" style="display: none;"></textarea>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Theme Toggle
+const themeToggle = document.getElementById('themeToggle');
+const body = document.body;
+
+// Load theme preference from localStorage
+function loadTheme() {
+  const savedTheme = localStorage.getItem('theme') || 'dark';
+  if (savedTheme === 'light') {
+    body.classList.add('light-mode');
+    themeToggle.classList.add('active');
+  } else {
+    body.classList.remove('light-mode');
+    themeToggle.classList.remove('active');
+  }
+}
+
+// Save theme preference to localStorage
+function saveTheme(theme) {
+  localStorage.setItem('theme', theme);
+}
+
+// Toggle theme
+themeToggle.addEventListener('click', function() {
+  body.classList.toggle('light-mode');
+  themeToggle.classList.toggle('active');
+  
+  const isLightMode = body.classList.contains('light-mode');
+  saveTheme(isLightMode ? 'light' : 'dark');
+});
+
+// Load theme on page load
+loadTheme();
+
+// Update slider display values
+document.getElementById('rngZoom').addEventListener('input', function() {
+  document.getElementById('zoomValue').textContent = this.value;
+});
+document.getElementById('rngCartesianOffsetY').addEventListener('input', function() {
+  document.getElementById('offsetValue').textContent = this.value;
+});
+document.getElementById('rngFollowerOffset').addEventListener('input', function() {
+  document.getElementById('followerValue').textContent = this.value;
+});
+document.getElementById('rngRotation').addEventListener('input', function() {
+  document.getElementById('lblAngle').textContent = this.value + '°';
+});
+</script>
 </body>
 </html>
