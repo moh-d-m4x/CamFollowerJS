@@ -214,11 +214,20 @@ document.getElementById("rngFollowerOffset").addEventListener("change", moveFoll
 document.getElementById("rngFollowerOffset").addEventListener("input", moveFollower);
 document.getElementById("btnFollowerReset").addEventListener("click", function () {console.log("1");rngFollowerOffset.value = 0; moveFollower() });
 document.getElementById("btnRecalcPressure").addEventListener("click", fullRotation);
-document.getElementById("btnSmooth").addEventListener("click", function () { flatPath.smooth({ type: 'continuous' }); createCam("smooth");});
+document.getElementById("chkSmooth").addEventListener("change", function () { 
+	if (this.checked) { 
+		flatPath.smooth({ type: 'continuous' }); 
+		createCam("smooth");
+	}
+	smoothingEnabled = this.checked;
+});
 document.getElementById("btnDebug").addEventListener("click", switchMode);
 document.getElementById("btnReload").onclick=function() { update("RELOAD");};
 document.getElementById("rngZoom").oninput=function() {  update("ZOOM");};
 document.getElementById("rngCartesianOffsetY").oninput=function() {  update("ZOOM"); };
+
+// Global variable for smoothing state
+var smoothingEnabled = false;
 
 //createObjects();
 initVariables();
@@ -1123,7 +1132,9 @@ function resetRotation () {
 
 function rotateCam(angle, type) {
 
-	camPath.remove(); // clean from screen at each rotation frame
+	if (camPath !== null && camPath !== undefined) {
+		camPath.remove(); // clean from screen at each rotation frame
+	}
 	camPath = camStaticReference.clone();
 
 	if (type == "manual") {
@@ -1513,7 +1524,12 @@ console.log("CreateCam: angle cam creation complete- camData, flatPath, camPath,
   } // if (profileType === "angle")
 
 /////////////////
+	// Remove old camStaticReference to avoid ghost shapes
+	if (camStaticReference !== null && camStaticReference !== undefined) {
+		camStaticReference.remove();
+	}
 	camStaticReference = camPath.clone(); // Reference cam for rotation, constant
+	camStaticReference.visible = false; // Ensure reference is hidden
 	//vector.x = 0;
 	//vector.y = 0;
 	//vector.angle = -90;
@@ -1565,19 +1581,31 @@ function updateJsonData() {
 //console.log("updateJsonData2");
 				if (i === selectedSegmentIndex) {
 					data.segments[i].x = parseInt((selectedCircle.position._x - GRID_X_OFFSET).toFixed(0));
-		            data.segments[i].y = parseInt( CAM_CENTER_Y - 6 - selectedCircle.position._y.toFixed(0));
+					// Convert screen Y back to data Y, inverting the transform applied in drawFlatPathFromJSONdata():
+					// screenY = GRID_Y_OFFSET + CAM_RADIUS - ((dataY + cartOffset) * zoom)
+					// => dataY = (GRID_Y_OFFSET + CAM_RADIUS - screenY)/zoom - cartOffset
+					var screenY = selectedCircle.position._y.toFixed(0);
+					var zoom = parseFloat(rngZoom.value) || 1;
+					var cartOffset = parseInt(rngCartesianOffsetY.value) || 0;
+					data.segments[i].y = parseInt(( (GRID_Y_OFFSET + CAM_RADIUS - screenY) / zoom ) - cartOffset);
 //console.log("    Update ",i,data.segments[i].x,data.segments[i].y);
 				}
 
 				if (selectedSegmentIndex === 0) { // sync first and last
 					//data.segments[camData.segments.length-1].x = parseInt((selectedCircle.position._x - GRID_X_OFFSET).toFixed(0));
-		            data.segments[camData.segments.length-1].y = parseInt( CAM_CENTER_Y - 6 - selectedCircle.position._y.toFixed(0));
+					var screenY = selectedCircle.position._y.toFixed(0);
+					var zoom = parseFloat(rngZoom.value) || 1;
+					var cartOffset = parseInt(rngCartesianOffsetY.value) || 0;
+					data.segments[camData.segments.length-1].y = parseInt(( (GRID_Y_OFFSET + CAM_RADIUS - screenY) / zoom ) - cartOffset);
 //console.log("    Update LAST:",data.segments[i].x,data.segments[i].y);
 				}
 
 				if (selectedSegmentIndex === camData.segments.length-1) { // sync first and last
 					//data.segments[0].x = parseInt((selectedCircle.position._x - GRID_X_OFFSET).toFixed(0));
-		            data.segments[0].y = parseInt( CAM_CENTER_Y - 6 - selectedCircle.position._y.toFixed(0));
+					var screenY = selectedCircle.position._y.toFixed(0);
+					var zoom = parseFloat(rngZoom.value) || 1;
+					var cartOffset = parseInt(rngCartesianOffsetY.value) || 0;
+					data.segments[0].y = parseInt(( (GRID_Y_OFFSET + CAM_RADIUS - screenY) / zoom ) - cartOffset);
 //console.log("    Update FIRST: ",data.segments[0].x,data.segments[0].y);
 				}
 			}
@@ -1605,7 +1633,15 @@ console.log("update");
 	}
 
 	initVariables();
-	createResult = createCam();
+	// Redraw the flat path based on current zoom/offset settings
+	if (smoothingEnabled) {
+		// If smoothing was enabled, we need to redraw from JSON first, then smooth
+		drawFlatPathFromJSONdata();
+		flatPath.smooth({ type: 'continuous' });
+		createResult = createCam("smooth");
+	} else {
+		createResult = createCam();
+	}
 	if (createResult.errNum !==0) {
 		spnStatus.innerHTML = createResult.errText;
 	} else {
@@ -1680,12 +1716,17 @@ console.log("NEW CALC=",newPoint.y  , GRID_Y_OFFSET  , rngCartesianOffsetY.value
 
 	            updateJsonData();  // Aggiorna il JSON in tempo reale
 				update("RELOAD");
-	createResult = createCam();
-	if (createResult.errNum !==0) {
-		spnStatus.innerHTML = createResult.errText;
-	} else {
-		spnStatus.innerHTML = createResult.errText;
-	}
+			
+			if (smoothingEnabled) {
+				flatPath.smooth({ type: 'continuous' });
+			}
+			
+			createResult = createCam(smoothingEnabled ? "smooth" : "");
+			if (createResult.errNum !==0) {
+				spnStatus.innerHTML = createResult.errText;
+			} else {
+				spnStatus.innerHTML = createResult.errText;
+			}
 
 	        }
 		}
@@ -1768,7 +1809,7 @@ Source code: <a href="https://github.com/jumpjack/CamFollowerJS">link</a><br>
 	<td colspan = 2>
 		JSON imported data&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 		<input type='button' id='btnReload' name='btnReload' value='Reload' >
-		<input type='button' id='btnSmooth' name='btnSmooth' value='Smooth'>
+		<input type='checkbox' id='chkSmooth' name='chkSmooth'> <label for='chkSmooth'>Smooth</label>
 		<br>
 		<textarea id="fileContents" name="fileContents" cols=50 rows=30>
 		</textarea><br>
