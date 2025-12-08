@@ -34,6 +34,9 @@ Since this is a static web application, no build process is required.
 2.  Open `index.html` in any modern web browser.
 3.  Ensure `paper-full.js` and other dependencies are in the same folder.
 
+You can try the latest version of the simulator here:
+[**https://moh-d-m4x.github.io/CamFollowerJS/**](https://moh-d-m4x.github.io/CamFollowerJS/)
+
 ## 🔗 Credits & Theory
 
 * **Original Author:** [Jumpjack](https://github.com/jumpjack)
