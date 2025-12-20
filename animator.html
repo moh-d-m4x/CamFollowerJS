@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stickman Cam Animator</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: sans-serif;
+            background: #333;
+            color: white;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 70vh;
+            background: #000;
+        }
+
+        #controls {
+            height: 30vh;
+            background: #222;
+            padding: 20px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .control-row {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        label {
+            min-width: 120px;
+        }
+
+        input[type="range"] {
+            flex-grow: 1;
+        }
+
+        button {
+            padding: 8px 16px;
+            cursor: pointer;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        button:hover {
+            background: #45a049;
+        }
+
+        button.secondary {
+            background: #555;
+        }
+
+        button.secondary:hover {
+            background: #666;
+        }
+
+        #timeline-viz {
+            width: 100%;
+            height: 60px;
+            background: #444;
+            position: relative;
+            margin-top: 10px;
+            border: 1px solid #666;
+        }
+
+        .keyframe-marker {
+            position: absolute;
+            width: 4px;
+            height: 100%;
+            background: yellow;
+            top: 0;
+            cursor: pointer;
+        }
+
+        .current-marker {
+            position: absolute;
+            width: 2px;
+            height: 100%;
+            background: red;
+            top: 0;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        #instructions {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            pointer-events: none;
+        }
+    </style>
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- OrbitControls -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+
+<body>
+    <div id="instructions">
+        <h3>Stickman Animator</h3>
+        <p>1. Rotate Cam (0-360°)</p>
+        <p>2. Adjust Follower Height</p>
+        <p>3. Add Keyframe</p>
+        <p>4. Export to generate Cam</p>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <div id="controls">
+        <div class="control-row">
+            <label for="cam-angle">Cam Angle (0-360°):</label>
+            <input type="range" id="cam-angle" min="0" max="360" value="0" step="1">
+            <span id="cam-angle-val">0°</span>
+        </div>
+        <div class="control-row">
+            <label for="follower-height">Follower Height:</label>
+            <input type="range" id="follower-height" min="0" max="100" value="0" step="1">
+            <span id="follower-height-val">0</span>
+        </div>
+        <div class="control-row">
+            <button id="btn-add-keyframe">Add Keyframe</button>
+            <button id="btn-play" class="secondary">Play Preview</button>
+            <button id="btn-clear" class="secondary">Clear All</button>
+            <div style="flex-grow: 1;"></div>
+            <button id="btn-save-exit">Save & Return to Cam Generator</button>
+        </div>
+        <div id="timeline-viz">
+            <div id="current-time-marker" class="current-marker"></div>
+        </div>
+    </div>
+
+    <script src="animator.js"></script>
+</body>
+
+</html>
