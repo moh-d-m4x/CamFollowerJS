@@ -207,6 +207,7 @@ document.getElementById("fileinput").addEventListener("change", loadFile);
 //document.getElementById("fileinputAngle").addEventListener("change", loadFileAngle);
 document.getElementById("SVGfileinput").addEventListener("change", importSVG);
 document.getElementById("btnExportSVG").addEventListener("click", exportSVG);
+document.getElementById("btnExportSTL").addEventListener("click", exportSTL);
 document.getElementById("btnSave").addEventListener("click", saveCam);
 document.getElementById("rngRotation").addEventListener("change", rotateBySlider);
 document.getElementById("rngRotation").addEventListener("input", rotateBySlider);
@@ -228,7 +229,7 @@ document.getElementById("rngZoom").oninput=function() {  update("ZOOM");};
 document.getElementById("rngCartesianOffsetY").oninput=function() {  update("ZOOM"); };
 
 // Global variable for smoothing state
-var smoothingEnabled = false;
+var smoothingEnabled = true;
 
 //createObjects();
 initVariables();
@@ -1110,6 +1111,121 @@ function exportSVG() {
 }
 
 
+function exportSTL() {
+	var extrusionHeight = parseFloat(document.getElementById("txtExtrusion").value) || 3;
+	var holeRadius = 3; // Fixed radius for center hole
+
+	// Clone and flatten to get polyline
+	var poly = camPath.clone();
+	poly.flatten(0.5); // Approximation error
+
+	var segments = poly.segments;
+	var len = segments.length;
+	var stl = "solid cam\n";
+
+	// Origin for centering
+	var cx = origin.x;
+	var cy = origin.y;
+
+	// Helper to format vertex
+	function v(x, y, z) {
+		return "vertex " + (x-cx).toFixed(4) + " " + (-(y-cy)).toFixed(4) + " " + z.toFixed(4) + "\n"; // Flip Y for standard CAD orientation
+	}
+
+	// Helper for facet
+	function f(v1, v2, v3) {
+		return "facet normal 0 0 0\nouter loop\n" + v1 + v2 + v3 + "endloop\nendfacet\n";
+	}
+
+	for (var i = 0; i < len; i++) {
+		var p1 = segments[i].point;
+		var p2 = segments[(i + 1) % len].point; // Loop back to start
+
+		// Skip duplicate points
+		if (p1.getDistance(p2) < 0.001) continue;
+
+		// Calculate hole points corresponding to outer points (projecting from center)
+		// We project from center towards P1 and P2 to finding the intersection with the hole circle.
+		// Vector C->P1
+		var v1_vec = p1.subtract(origin);
+		var v2_vec = p2.subtract(origin);
+
+		var h1 = origin.add(v1_vec.normalize().multiply(holeRadius));
+		var h2 = origin.add(v2_vec.normalize().multiply(holeRadius));
+
+		// Z coordinates
+		var z0 = 0;
+		var z1 = extrusionHeight;
+
+		// Vertices strings
+		// Outer Profile
+		var p1_b = v(p1.x, p1.y, z0);
+		var p1_t = v(p1.x, p1.y, z1);
+		var p2_b = v(p2.x, p2.y, z0);
+		var p2_t = v(p2.x, p2.y, z1);
+
+		// Inner Hole
+		var h1_b = v(h1.x, h1.y, z0);
+		var h1_t = v(h1.x, h1.y, z1);
+		var h2_b = v(h2.x, h2.y, z0);
+		var h2_t = v(h2.x, h2.y, z1);
+
+		// TOP FACE (Loft between Hole and Profile)
+		// Normal Up (Z+).
+		// Quad: H1_T -> P1_T -> P2_T -> H2_T
+		// Tri 1: H1_T -> P1_T -> P2_T
+		// Tri 2: H1_T -> P2_T -> H2_T
+		// Check winding: If P1->P2 is CCW around center.
+		// H1->P1 is Out. H1->P2 is Out+CCW.
+		// H1->P1->P2 is CCW? Yes.
+		stl += f(h1_t, p1_t, p2_t);
+		stl += f(h1_t, p2_t, h2_t);
+
+		// BOTTOM FACE (Loft between Hole and Profile)
+		// Normal Down (Z-).
+		// Quad: H1_B -> H2_B -> P2_B -> P1_B
+		// Tri 1: H1_B -> H2_B -> P2_B
+		// Tri 2: H1_B -> P2_B -> P1_B
+		stl += f(h1_b, h2_b, p2_b);
+		stl += f(h1_b, p2_b, p1_b);
+
+		// OUTER SIDES (Quad between P1 and P2)
+		// Normal Out away from center.
+		// Tri 1: P1_T -> P2_T -> P2_B
+		// Tri 2: P1_T -> P2_B -> P1_B
+		stl += f(p1_t, p2_t, p2_b);
+		stl += f(p1_t, p2_b, p1_b);
+
+		// INNER SIDES (Hole Wall)
+		// Normal In towards center (into void).
+		// Quad: H1_T -> H2_T -> H2_B -> H1_B
+		// Tri 1: H1_T -> H2_B -> H2_T  (Wait, H1_T -> H2_T is CCW around center.)
+		// Normal should point to CENTER.
+		// Standard Cylinder Inner Surface:
+		// Vertices order CW when looking from inside?
+		// Let's use Right Hand Rule.
+		// H1_T -> H2_T -> H2_B.
+		// Vector A = H2_T - H1_T (CCW Tangent).
+		// Vector B = H2_B - H2_T (Down).
+		// A x B = Tangent x Down = Inwards (Towards Center).
+		// Yes. So Tri 1: H1_T -> H2_T -> H2_B.
+		// Tri 2: H1_T -> H2_B -> H1_B.
+		stl += f(h1_t, h2_t, h2_b);
+		stl += f(h1_t, h2_b, h1_b);
+	}
+
+	stl += "endsolid cam";
+	poly.remove();
+
+	// Download
+	var blob = new Blob([stl], {type: 'text/plain'});
+	var link = document.createElement("a");
+	link.href = window.URL.createObjectURL(blob);
+	link.download = "cam_extrusion.stl";
+	link.click();
+}
+
+
 
 
 
@@ -1859,7 +1975,7 @@ function onMouseDrag (event) {
 	}
 
 	.toggle-switch.active::after {
-		left: 26px;
+		left: calc(100% - 24px);
 	}
 
 	.toggle-icon {
@@ -2329,13 +2445,24 @@ function onMouseDrag (event) {
 						<li><a href="http://svg2stl.com/" target="_blank">Converter 2</a></li>
 					</ul>
 				</div>
+				<div class="slider-group"
+					style="margin-top: 15px; border-top: 1px solid var(--border-color); padding-top: 15px;">
+					<label class="slider-label">
+						<span>Extrusion (mm)</span>
+						<input type="number" id="txtExtrusion" min="0" max="300" value="3"
+							style="width: 60px; background: rgba(255, 255, 255, 0.1); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; padding: 2px 5px;">
+					</label>
+				</div>
+				<div class="button-group">
+					<button id="btnExportSTL">Export .STL</button>
+				</div>
 			</div>
 
 			<div class="section">
 				<span class="section-title">Tools</span>
 				<div class="button-group">
 					<button id="btnDebug">Debug</button>
-					<button id="btnStickman" style="border-color: #4CAF50; color: #4CAF50;">Stickman Animator</button>
+					<button id="btnStickman" style="border-color: #4CAF50; color: #4CAF50;">3D Editor</button>
 				</div>
 			</div>
 		</div>
@@ -2360,9 +2487,9 @@ function onMouseDrag (event) {
 				<div class="slider-group">
 					<label class="slider-label">
 						<span>Cartesian Offset</span>
-						<span id="offsetValue">0</span>
+						<span id="offsetValue">50</span>
 					</label>
-					<input type="range" id="rngCartesianOffsetY" name="rngCartesianOffsetY" value="0" min="1" max="100"
+					<input type="range" id="rngCartesianOffsetY" name="rngCartesianOffsetY" value="50" min="1" max="100"
 						step="1">
 				</div>
 
@@ -2413,7 +2540,7 @@ function onMouseDrag (event) {
 			<div class="section">
 				<span class="section-title">JSON Data</span>
 				<div class="checkbox-group">
-					<input type="checkbox" id="chkSmooth" name="chkSmooth">
+					<input type="checkbox" id="chkSmooth" name="chkSmooth" checked>
 					<label for="chkSmooth">Smooth Curve</label>
 				</div>
 				<button id="btnReload" style="width: 100%; margin-bottom: 12px;">Reload</button>
@@ -2473,10 +2600,27 @@ function onMouseDrag (event) {
 		document.getElementById('lblAngle').textContent = this.value + '°';
 	});
 
-	// --- Stickman Animator Logic ---
+	// --- 3D Editor Logic ---
 	const btnStickman = document.getElementById("btnStickman");
 	if (btnStickman) {
 		btnStickman.addEventListener("click", function () {
+			// Get current cam data from the text area
+			try {
+				var currentCamData = JSON.parse(document.getElementById('fileContents').value);
+				if (currentCamData && currentCamData.segments && currentCamData.segments.length > 0) {
+					// Convert segments to keyframes format for the 3D Editor
+					var keyframes = currentCamData.segments.map(function (seg) {
+						return {
+							angle: parseFloat(seg.x),
+							height: parseFloat(seg.y)
+						};
+					});
+					localStorage.setItem('editorKeyframes', JSON.stringify(keyframes));
+					console.log("Sending " + keyframes.length + " keyframes to 3D Editor");
+				}
+			} catch (e) {
+				console.log("Could not parse cam data: " + e);
+			}
 			window.location.href = 'animator.html';
 		});
 	}
@@ -2499,6 +2643,21 @@ function onMouseDrag (event) {
 					if (typeof drawFlatPathFromJSONdata === 'function') drawFlatPathFromJSONdata();
 					if (typeof createCam === 'function') createCam();
 					if (typeof update === 'function') update("MANUAL");
+
+					// If smooth curve is enabled, toggle it off and on to trigger the event handler
+					setTimeout(function () {
+						var chkSmooth = document.getElementById('chkSmooth');
+						if (chkSmooth && chkSmooth.checked) {
+							// Trigger change event by unchecking and rechecking
+							chkSmooth.checked = false;
+							chkSmooth.dispatchEvent(new Event('change'));
+
+							setTimeout(function () {
+								chkSmooth.checked = true;
+								chkSmooth.dispatchEvent(new Event('change'));
+							}, 100);
+						}
+					}, 500);
 				}, 500);
 			}
 			localStorage.removeItem('camImport');
